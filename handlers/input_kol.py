@@ -1,7 +1,11 @@
 """
 Alur /input_kol: staff upload screenshot TikTok & Instagram (opsional, bisa /skip),
-bot coba baca datanya sebagai draft, lalu staff mengisi/mengoreksi tiap field secara
-berurutan. Field OCR ditampilkan sebagai hint, staff tetap wajib mengetik nilainya sendiri.
+bot coba baca followers/following/likes + username sebagai draft (Tesseract OCR),
+staff mengisi/koreksi tiap field secara berurutan, dikelompokkan per bagian biar
+tidak jadi daftar panjang yang melelahkan dibaca satu per satu.
+
+Setelah disimpan, bot langsung lanjut ke panel status berbasis tombol (lihat
+handlers/flow.py) — bukan cuma "tersimpan, selesai".
 """
 import logging
 
@@ -13,32 +17,37 @@ from telegram.ext import (
 import db
 from utils.vision import extract_profile_from_screenshot
 from utils.sheets_sync import sync_if_configured
+from handlers import flow
 
 logger = logging.getLogger(__name__)
 
-(
-    SS_TIKTOK, SS_IG,
-    F_NAMA, F_TIKTOK_USER, F_IG_USER, F_FOLLOWERS_TIKTOK, F_FOLLOWERS_IG,
-    F_NICHE, F_DOMISILI, F_DEMOGRAFI, F_KONTAK,
-    F_TIPE_KOLAB, F_PREFERENSI, F_PIC, F_CATATAN,
-    CONFIRM,
-) = range(16)
+SS_TIKTOK, SS_IG = range(2)
 
-FIELD_ORDER = [
-    (F_NAMA, "nama", "Nama KOL?"),
-    (F_TIKTOK_USER, "tiktok_username", "Username TikTok? (kosongkan dengan '-' kalau tidak ada)"),
-    (F_IG_USER, "ig_username", "Username Instagram? ('-' kalau tidak ada)"),
-    (F_FOLLOWERS_TIKTOK, "followers_tiktok", "Jumlah followers TikTok? (angka saja, '-' kalau tidak tahu)"),
-    (F_FOLLOWERS_IG, "followers_ig", "Jumlah followers Instagram? (angka saja, '-' kalau tidak tahu)"),
-    (F_NICHE, "niche", "Niche/kategori konten KOL? (misal: food, lifestyle, travel)"),
-    (F_DOMISILI, "domisili", "Domisili KOL? (misal: Lombok Timur, luar NTB, dll)"),
-    (F_DEMOGRAFI, "demografi_audiens", "Perkiraan demografi audiens? ('-' kalau tidak ada info)"),
-    (F_KONTAK, "kontak", "Kontak KOL (WA/email)? ('-' kalau belum ada)"),
-    (F_TIPE_KOLAB, "tipe_kolaborasi", "Tipe kolaborasi? (barter/paid/lainnya)"),
-    (F_PREFERENSI, "preferensi_konten", "Preferensi konten? (reel, video review, story, dll)"),
-    (F_PIC, "pic", "PIC internal yang approach KOL ini?"),
-    (F_CATATAN, "catatan", "Catatan tambahan? ('-' kalau tidak ada)"),
+# (state_offset, field_name, prompt, judul_section_atau_None)
+# judul_section diisi hanya di field PERTAMA tiap section -> jadi header sebelum prompt-nya
+_FIELD_DEFS = [
+    ("nama", "Nama KOL?", "📋 Identitas & Platform"),
+    ("tiktok_username", "Username TikTok? ('-' kalau tidak ada)", None),
+    ("ig_username", "Username Instagram? ('-' kalau tidak ada)", None),
+    ("followers_tiktok", "Followers TikTok? (angka saja, '-' kalau tidak tahu)", "📊 Statistik Akun"),
+    ("following_tiktok", "Following TikTok? (angka saja, '-' kalau tidak tahu)", None),
+    ("likes_tiktok", "Total Likes TikTok? (angka saja, '-' kalau tidak tahu)", None),
+    ("followers_ig", "Followers Instagram? (angka saja, '-' kalau tidak tahu)", None),
+    ("following_ig", "Following Instagram? (angka saja, '-' kalau tidak tahu)", None),
+    ("niche", "Niche/kategori konten KOL? (misal: food, lifestyle, travel)", "🎯 Profil Audiens"),
+    ("domisili", "Domisili KOL? (misal: Lombok Timur, luar NTB, dll)", None),
+    ("demografi_audiens", "Perkiraan demografi audiens? ('-' kalau tidak ada info)", None),
+    ("kontak", "Kontak KOL (WA/email)? ('-' kalau belum ada)", None),
+    ("tipe_kolaborasi", "Tipe kolaborasi? (barter/paid/lainnya)", "🤝 Kerja Sama"),
+    ("preferensi_konten", "Preferensi konten? (reel, video review, story, dll)", None),
+    ("pic", "PIC internal yang approach KOL ini?", None),
+    ("catatan", "Catatan tambahan? ('-' kalau tidak ada)", None),
 ]
+_NUMERIC_FIELDS = {"followers_tiktok", "following_tiktok", "likes_tiktok", "followers_ig", "following_ig"}
+
+# state key tiap field = index + offset setelah SS_IG
+FIELD_ORDER = [(i + 2, name, prompt, section) for i, (name, prompt, section) in enumerate(_FIELD_DEFS)]
+CONFIRM = len(FIELD_ORDER) + 2
 NEXT_STATE = {FIELD_ORDER[i][0]: FIELD_ORDER[i + 1][0] for i in range(len(FIELD_ORDER) - 1)}
 NEXT_STATE[FIELD_ORDER[-1][0]] = CONFIRM
 
@@ -67,7 +76,9 @@ async def _handle_screenshot(update, context, jenis: str):
         preview = ", ".join(
             f"{k}={v}" for k, v in draft.items() if v and k != "raw_text"
         )
-        await update.message.reply_text(f"Terbaca (cek ulang ya): {preview or 'username/followers tidak terbaca, teks lain ada di raw text'}")
+        await update.message.reply_text(
+            f"Terbaca (cek ulang ya): {preview or 'username/angka tidak terbaca jelas'}"
+        )
     else:
         await update.message.reply_text("Tidak berhasil membaca data dari screenshot, lanjut isi manual ya.")
 
@@ -100,17 +111,22 @@ async def _start_fields(update, context):
         "tiktok_username": tiktok_hint.get("username"),
         "ig_username": ig_hint.get("username"),
         "followers_tiktok": tiktok_hint.get("followers"),
+        "following_tiktok": tiktok_hint.get("following"),
+        "likes_tiktok": tiktok_hint.get("likes"),
         "followers_ig": ig_hint.get("followers"),
+        "following_ig": ig_hint.get("following"),
         # niche sengaja tidak ditebak otomatis, selalu diisi manual oleh staff
     }
-    key, field, prompt = FIELD_ORDER[0]
-    await _ask(update, context, key)
-    return key
+    first_state, _, _, _ = FIELD_ORDER[0]
+    await _ask(update, context, first_state)
+    return first_state
 
 
 async def _ask(update, context, state):
-    field_map = {k: (name, prompt) for k, name, prompt in FIELD_ORDER}
-    name, prompt = field_map[state]
+    field_map = {k: (name, prompt, section) for k, name, prompt, section in FIELD_ORDER}
+    name, prompt, section = field_map[state]
+    if section:
+        await update.message.reply_text(f"— {section} —")
     hint = context.user_data.get("_field_hints", {}).get(name)
     if hint:
         prompt = f"{prompt}\n(hasil baca screenshot: {hint} — ketik ulang untuk konfirmasi/koreksi)"
@@ -118,12 +134,12 @@ async def _ask(update, context, state):
 
 
 def make_field_handler(state):
-    name = {k: n for k, n, _ in FIELD_ORDER}[state]
+    name = {k: n for k, n, _, _ in FIELD_ORDER}[state]
 
     async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
         value = None if text == "-" else text
-        if name in ("followers_tiktok", "followers_ig") and value is not None:
+        if name in _NUMERIC_FIELDS and value is not None:
             try:
                 value = int(value.replace(".", "").replace(",", ""))
             except ValueError:
@@ -142,7 +158,7 @@ def make_field_handler(state):
 
 async def _show_confirmation(update, context):
     draft = context.user_data["kol_draft"]
-    lines = [f"- {name}: {draft.get(name) or '-'}" for _, name, _ in FIELD_ORDER]
+    lines = [f"- {name}: {draft.get(name) or '-'}" for _, name, _, _ in FIELD_ORDER]
     await update.message.reply_text(
         "Cek data sebelum disimpan:\n" + "\n".join(lines) +
         "\n\nKetik /simpan untuk simpan, atau /batal untuk membatalkan."
@@ -164,6 +180,10 @@ async def simpan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ig_username=draft.get("ig_username"),
             followers_tiktok=draft.get("followers_tiktok"),
             followers_ig=draft.get("followers_ig"),
+            following_tiktok=draft.get("following_tiktok"),
+            following_ig=draft.get("following_ig"),
+            likes_tiktok=draft.get("likes_tiktok"),
+            likes_ig=None,
             niche=draft.get("niche"),
             engagement_rate=None,
             domisili=draft.get("domisili"),
@@ -191,11 +211,14 @@ async def simpan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uploaded_by=user_id,
         )
 
+    await sync_if_configured()
     await update.message.reply_text(
         f"Tersimpan. KOL #{kol_id}, kolaborasi #{kolaborasi_id} dengan status 'Sudah Diapproach'."
     )
-    await sync_if_configured()
     context.user_data.clear()
+
+    # Lanjut langsung ke panel status berbasis tombol untuk kolaborasi yang baru dibuat
+    await flow.show_panel(update.message.reply_text, kolaborasi_id)
     return ConversationHandler.END
 
 
@@ -216,7 +239,7 @@ def build_conversation_handler():
             CommandHandler("skip", skip_ss_ig),
         ],
     }
-    for key, name, _ in FIELD_ORDER:
+    for key, name, _, _ in FIELD_ORDER:
         states[key] = [MessageHandler(filters.TEXT & ~filters.COMMAND, make_field_handler(key))]
     states[CONFIRM] = [CommandHandler("simpan", simpan), CommandHandler("batal", batal)]
 
