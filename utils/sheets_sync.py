@@ -2,9 +2,11 @@
 Sinkronisasi snapshot data KOL ke Google Sheets (read-mostly, untuk dilihat/diedit
 visual oleh yang tidak pegang Telegram). Postgres tetap jadi sumber utama.
 
-Dipanggil manual lewat command /sync_sheets. Bisa juga dijadwalkan lewat
-Railway cron kalau mau otomatis berkala.
+Dipanggil otomatis lewat sync_if_configured() setiap ada perubahan data
+(input KOL baru, update status, performa, dst). Command /sync_sheets tetap
+tersedia untuk sync manual/ulang kalau perlu.
 """
+import asyncio
 import json
 import logging
 
@@ -26,13 +28,7 @@ def is_configured() -> bool:
     return bool(GOOGLE_SHEETS_CREDENTIALS_JSON and GOOGLE_SHEETS_SPREADSHEET_ID)
 
 
-async def sync_all():
-    if not is_configured():
-        raise RuntimeError(
-            "Google Sheets belum dikonfigurasi. Set GOOGLE_SHEETS_CREDENTIALS_JSON "
-            "dan GOOGLE_SHEETS_SPREADSHEET_ID di environment variable."
-        )
-
+def _sync_all_blocking(values):
     import gspread
     from google.oauth2.service_account import Credentials
 
@@ -47,18 +43,42 @@ async def sync_all():
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title="KOL", rows=1000, cols=len(HEADER))
 
+    ws.clear()
+    ws.update(values)
+
+
+async def sync_all():
+    if not is_configured():
+        raise RuntimeError(
+            "Google Sheets belum dikonfigurasi. Set GOOGLE_SHEETS_CREDENTIALS_JSON "
+            "dan GOOGLE_SHEETS_SPREADSHEET_ID di environment variable."
+        )
+
     rows = await db.list_all_kolaborasi()
     values = [HEADER]
     for r in rows:
         values.append([
             r["id"], r["kol_id"], r["nama"], r["tiktok_username"] or "", r["ig_username"] or "",
-            r["followers_tiktok"] or "", r["followers_ig"] or "", "", "", "",
+            r["followers_tiktok"] or "", r["followers_ig"] or "",
+            r["niche"] or "", r["domisili"] or "", r["kontak"] or "",
             r["tipe_kolaborasi"] or "", r["preferensi_konten"] or "", r["pic"] or "",
             STATUS_LABELS.get(r["status"], r["status"]),
             str(r["tanggal_kunjungan"] or ""), r["link_konten"] or "",
             str(r["tanggal_upload"] or ""), str(r["updated_at"]),
         ])
 
-    ws.clear()
-    ws.update(values)
+    # gspread itu sinkron/blocking, jalankan di thread terpisah biar tidak macetin bot
+    await asyncio.to_thread(_sync_all_blocking, values)
     return len(rows)
+
+
+async def sync_if_configured():
+    """Dipanggil setelah tiap perubahan data. Aman dipanggil kapan saja —
+    no-op kalau belum dikonfigurasi, dan gagal diam-diam (cuma log) supaya
+    error Google Sheets tidak pernah bikin command Telegram gagal."""
+    if not is_configured():
+        return
+    try:
+        await sync_all()
+    except Exception:
+        logger.exception("Auto-sync ke Google Sheets gagal")

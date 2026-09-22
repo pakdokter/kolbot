@@ -151,7 +151,8 @@ async def list_all_kolaborasi():
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
-            SELECT kl.*, k.nama, k.tiktok_username, k.ig_username
+            SELECT kl.*, k.nama, k.tiktok_username, k.ig_username,
+                   k.niche, k.domisili, k.kontak
             FROM kolaborasi kl JOIN kol k ON k.id = kl.kol_id
             ORDER BY kl.created_at DESC
             """

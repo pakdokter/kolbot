@@ -6,12 +6,11 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 DATABASE_URL = os.environ["DATABASE_URL"]
 
-# Dipakai untuk ekstraksi data dari screenshot profil TikTok/Instagram.
-# Kosongkan OPENAI_API_KEY kalau mau matikan fitur OCR (bot tetap jalan, staff isi manual semua).
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-VISION_MODEL = os.environ.get("VISION_MODEL", "gpt-4o-mini")
+# Ekstraksi data dari screenshot profil TikTok/Instagram pakai Tesseract OCR (lokal, gratis,
+# tidak butuh API key). Niche/kategori selalu diisi manual, tidak ditebak otomatis.
 
-# Google Sheets sync (opsional). Kosongkan kalau belum mau dipakai.
+# Google Sheets sync. Kosongkan untuk matikan (bot tetap jalan, cuma tanpa sync).
+# Setiap ada perubahan data (input KOL baru, update status, performa) bot otomatis sync ke sini.
 GOOGLE_SHEETS_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON", "")
 GOOGLE_SHEETS_SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID", "")
 

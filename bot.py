@@ -38,7 +38,8 @@ async def start_cmd(update, context):
         "/sudah_upload\n"
         "/tolak_batal\n"
         "/detail_kol <username/nama>\n"
-        "/sync_sheets - sinkronkan data ke Google Sheets"
+        "/sync_sheets - sinkronkan ulang ke Google Sheets secara manual "
+        "(data otomatis ke-sync tiap ada perubahan kalau sudah dikonfigurasi)"
     )
 
 

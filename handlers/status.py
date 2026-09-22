@@ -15,6 +15,7 @@ from telegram.ext import ContextTypes
 
 import db
 from config import STATUS_LABELS
+from utils.sheets_sync import sync_if_configured
 
 
 def _parse_args(text: str):
@@ -47,6 +48,7 @@ async def reply_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.update_status(kolaborasi_id, "replied", update.effective_user.id)
     await update.message.reply_text(f"Kolaborasi #{kolaborasi_id} ({row['nama']}) ditandai Sudah Membalas.")
+    await sync_if_configured()
 
 
 async def jadwal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,6 +67,7 @@ async def jadwal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.update_status(kolaborasi_id, "scheduled", update.effective_user.id, tanggal_kunjungan=tanggal)
     await update.message.reply_text(f"Kolaborasi #{kolaborasi_id} ({row['nama']}) dijadwalkan {tanggal}.")
+    await sync_if_configured()
 
 
 async def reschedule_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,6 +87,7 @@ async def reschedule_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.update_status(kolaborasi_id, "scheduled", update.effective_user.id, catatan=alasan, tanggal_kunjungan=tanggal)
     await update.message.reply_text(f"Jadwal kolaborasi #{kolaborasi_id} ({row['nama']}) diubah ke {tanggal}.")
+    await sync_if_configured()
 
 
 async def tolak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -98,6 +102,7 @@ async def tolak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.update_status(kolaborasi_id, "ditolak", update.effective_user.id, catatan=alasan)
     await update.message.reply_text(f"Kolaborasi #{kolaborasi_id} ({row['nama']}) ditandai Ditolak.")
+    await sync_if_configured()
 
 
 async def batalkan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -112,6 +117,7 @@ async def batalkan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.update_status(kolaborasi_id, "batal", update.effective_user.id, catatan=alasan)
     await update.message.reply_text(f"Kolaborasi #{kolaborasi_id} ({row['nama']}) dibatalkan.")
+    await sync_if_configured()
 
 
 async def berkunjung_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -125,6 +131,7 @@ async def berkunjung_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.update_status(kolaborasi_id, "visited", update.effective_user.id)
     await update.message.reply_text(f"Kolaborasi #{kolaborasi_id} ({row['nama']}) ditandai Sudah Berkunjung.")
+    await sync_if_configured()
 
 
 async def upload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -143,3 +150,4 @@ async def upload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link_konten=link, tanggal_upload=date.today(),
     )
     await update.message.reply_text(f"Kolaborasi #{kolaborasi_id} ({row['nama']}) ditandai Konten Sudah Upload.")
+    await sync_if_configured()

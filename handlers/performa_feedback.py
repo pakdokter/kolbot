@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 import db
+from utils.sheets_sync import sync_if_configured
 
 
 async def performa_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -43,6 +44,7 @@ async def performa_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Performa kolaborasi #{kolaborasi_id} ({row['nama']}) tersimpan: "
         f"views={views}, likes={likes}, comments={comments}, shares={shares or '-'}, saves={saves or '-'}."
     )
+    await sync_if_configured()
 
 
 async def lihat_performa_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):

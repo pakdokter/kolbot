@@ -12,6 +12,7 @@ from telegram.ext import (
 
 import db
 from utils.vision import extract_profile_from_screenshot
+from utils.sheets_sync import sync_if_configured
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +64,10 @@ async def _handle_screenshot(update, context, jenis: str):
         {"jenis": jenis, "file_id": photo.file_id, "ocr_raw": draft}
     )
     if draft:
-        preview = ", ".join(f"{k}={v}" for k, v in draft.items() if v)
-        await update.message.reply_text(f"Terbaca (cek ulang ya): {preview or 'tidak ada info terbaca'}")
+        preview = ", ".join(
+            f"{k}={v}" for k, v in draft.items() if v and k != "raw_text"
+        )
+        await update.message.reply_text(f"Terbaca (cek ulang ya): {preview or 'username/followers tidak terbaca, teks lain ada di raw text'}")
     else:
         await update.message.reply_text("Tidak berhasil membaca data dari screenshot, lanjut isi manual ya.")
 
@@ -98,7 +101,7 @@ async def _start_fields(update, context):
         "ig_username": ig_hint.get("username"),
         "followers_tiktok": tiktok_hint.get("followers"),
         "followers_ig": ig_hint.get("followers"),
-        "niche": tiktok_hint.get("niche_tebakan") or ig_hint.get("niche_tebakan"),
+        # niche sengaja tidak ditebak otomatis, selalu diisi manual oleh staff
     }
     key, field, prompt = FIELD_ORDER[0]
     await _ask(update, context, key)
@@ -191,6 +194,7 @@ async def simpan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Tersimpan. KOL #{kol_id}, kolaborasi #{kolaborasi_id} dengan status 'Sudah Diapproach'."
     )
+    await sync_if_configured()
     context.user_data.clear()
     return ConversationHandler.END
 
