@@ -8,6 +8,10 @@ CREATE TABLE IF NOT EXISTS kol (
     ig_username TEXT,
     followers_tiktok INTEGER,
     followers_ig INTEGER,
+    following_tiktok INTEGER,
+    following_ig INTEGER,
+    likes_tiktok INTEGER,      -- total likes yang tampil di profil TikTok
+    likes_ig INTEGER,          -- opsional, IG biasanya tidak menampilkan total likes di profil
     niche TEXT,
     engagement_rate NUMERIC,
     domisili TEXT,
@@ -78,6 +82,13 @@ CREATE TABLE IF NOT EXISTS performa (
     input_by BIGINT,
     input_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Migrasi ringan untuk deployment lama yang tabelnya sudah ada duluan
+-- (CREATE TABLE IF NOT EXISTS di atas tidak menambah kolom baru ke tabel yang sudah ada)
+ALTER TABLE kol ADD COLUMN IF NOT EXISTS following_tiktok INTEGER;
+ALTER TABLE kol ADD COLUMN IF NOT EXISTS following_ig INTEGER;
+ALTER TABLE kol ADD COLUMN IF NOT EXISTS likes_tiktok INTEGER;
+ALTER TABLE kol ADD COLUMN IF NOT EXISTS likes_ig INTEGER;
 
 -- Feedback staff setelah KOL berkunjung
 CREATE TABLE IF NOT EXISTS feedback (

@@ -22,19 +22,22 @@ async def init_db():
 # ---------- KOL ----------
 
 async def create_kol(nama, tiktok_username, ig_username, followers_tiktok,
-                      followers_ig, niche, engagement_rate, domisili,
+                      followers_ig, following_tiktok, following_ig,
+                      likes_tiktok, likes_ig, niche, engagement_rate, domisili,
                       demografi_audiens, kontak, catatan, created_by):
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             INSERT INTO kol (nama, tiktok_username, ig_username, followers_tiktok,
-                              followers_ig, niche, engagement_rate, domisili,
+                              followers_ig, following_tiktok, following_ig,
+                              likes_tiktok, likes_ig, niche, engagement_rate, domisili,
                               demografi_audiens, kontak, catatan, created_by)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
             RETURNING id
             """,
             nama, tiktok_username, ig_username, followers_tiktok, followers_ig,
+            following_tiktok, following_ig, likes_tiktok, likes_ig,
             niche, engagement_rate, domisili, demografi_audiens, kontak, catatan,
             created_by,
         )

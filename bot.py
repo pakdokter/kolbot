@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler
 import db
 from config import TELEGRAM_BOT_TOKEN
 from handlers.input_kol import build_conversation_handler
-from handlers import status, lists, performa_feedback
+from handlers import status, lists, performa_feedback, flow, konten
 from utils import sheets_sync
 
 logging.basicConfig(
@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 async def start_cmd(update, context):
     await update.message.reply_text(
         "Bot Manajemen KOL Stoa Space\n\n"
-        "/input_kol - input KOL baru (upload screenshot lalu isi data)\n"
+        "/input_kol - input KOL baru (upload screenshot lalu isi data). Setelah tersimpan, "
+        "bot langsung nampilin tombol buat lanjutin status (sudah membalas/ditolak/dll) "
+        "sampai ke input konten & performa.\n"
+        "/panel <id> - buka lagi menu tombol status kolaborasi tertentu\n\n"
+        "Command manual (kalau lebih suka ketik daripada tap tombol):\n"
         "/reply <id> - tandai KOL sudah membalas\n"
         "/jadwal <id> <YYYY-MM-DD> - tandai jadwal kunjungan\n"
         "/reschedule <id> <YYYY-MM-DD> [alasan] - ubah jadwal\n"
@@ -29,7 +33,7 @@ async def start_cmd(update, context):
         "/performa <id> <views> <likes> <comments> [shares] [saves] - input performa\n"
         "/lihat_performa <id>\n"
         "/feedback <id> <teks>\n"
-        "/lihat_feedback <id>\n"
+        "/lihat_feedback <id>\n\n"
         "/list_kol - semua KOL\n"
         "/belum_membalas\n"
         "/sudah_membalas\n"
@@ -71,6 +75,7 @@ async def post_init(application: Application):
         BotCommand("sudah_upload", "Konten sudah upload"),
         BotCommand("tolak_batal", "KOL ditolak/batal"),
         BotCommand("detail_kol", "Detail satu KOL"),
+        BotCommand("panel", "Buka menu tombol status kolaborasi"),
         BotCommand("sync_sheets", "Sinkronkan ke Google Sheets"),
     ])
     logger.info("Database siap, bot commands terpasang.")
@@ -81,6 +86,14 @@ def main():
 
     application.add_handler(CommandHandler("start", start_cmd))
     application.add_handler(build_conversation_handler())
+
+    # Konten conversation (entry point-nya tombol "Konten Sudah Naik") didaftarkan
+    # lebih dulu supaya callback act:<id>:konten ditangkap di sini, bukan di flow.py
+    application.add_handler(konten.build_conversation_handler())
+    application.add_handler(CommandHandler("panel", flow.panel_cmd))
+    callback_handler, pending_text_handler = flow.build_handlers()
+    application.add_handler(callback_handler)
+    application.add_handler(pending_text_handler, group=1)
 
     application.add_handler(CommandHandler("reply", status.reply_cmd))
     application.add_handler(CommandHandler("jadwal", status.jadwal_cmd))
